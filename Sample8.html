@@ -448,14 +448,13 @@
       emojiPicker: document.getElementById('emoji-picker')
     };
 
-    const CONFIG = {
-      MAX_FILE_SIZE: 1024 * 1024 * 1024,
-      SOCKET_URL: 'http://localhost:5000',
-      RECONNECTION_ATTEMPTS: 5,
-      RECONNECTION_DELAY: 1000,
-      ALLOWED_FILE_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-    };
-
+const CONFIG = {
+    MAX_FILE_SIZE: 1024 * 1024 * 1024,
+    SOCKET_URL: window.location.origin,
+    RECONNECTION_ATTEMPTS: 5,
+    RECONNECTION_DELAY: 1000,
+    ALLOWED_FILE_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+};
     let socket;
     let currentUsername = '';
     let isConnected = false;
