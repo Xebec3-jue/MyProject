@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .auth-container {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      z-index: 100;
+      width: 350px;
+    }
+    #main-interface {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+    .users-sidebar {
+      width: 200px;
+      background: white;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+    }
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: white;
+    }
+    .history-sidebar {
+      width: 250px;
+      background: white;
+      padding: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      border-left: 1px solid #e0e0e0;
+    }
+    #messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #f9f9f9;
+    }
+    #history-messages {
+      padding: 5px;
+    }
+    .message {
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: #e9f5ff;
+      border-radius: 4px;
+      word-break: break-word;
+      position: relative;
+    }
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .message-reactions {
+      display: flex;
+      gap: 5px;
+    }
+    .reaction {
+      cursor: pointer;
+      font-size: 0.8em;
+      opacity: 0.7;
+      transition: all 0.2s;
+    }
+    .reaction:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+    .history-message {
+      margin-bottom: 8px;
+      padding: 8px;
+      background: #f5f5f5;
+      border-radius: 4px;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .history-message:hover {
+      background: #e0e0e0;
+    }
+    .history-date {
+      font-weight: bold;
+      margin: 15px 0 5px 0;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #ddd;
+    }
+    #message-form {
+      padding: 15px;
+      display: flex;
+      gap: 10px;
+      background: white;
+      border-top: 1px solid #e0e0e0;
+      position: relative;
+    }
+    #message-input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    #login-btn, #send-btn {
+      background: #4CAF50;
+      color: white;
+    }
+    #login-btn:hover, #send-btn:hover {
+      background: #45a049;
+    }
+    #register-btn, button.secondary {
+      background: #2196F3;
+      color: white;
+    }
+    #register-btn:hover, button.secondary:hover {
+      background: #0b7dda;
+    }
+    #mic-btn {
+      background: #f44336;
+      color: white;
+      padding: 10px;
+    }
+    #mic-btn.listening {
+      background: #4CAF50;
+      animation: pulse 1.5s infinite;
+    }
+    #assistant-btn {
+      background: #607d8b;
+      color: white;
+      padding: 10px;
+    }
+    #assistant-btn.listening {
+      background: #FF9800;
+      animation: pulse 1.5s infinite;
+    }
+    #logout-btn {
+      background: #f44336;
+      color: white;
+      margin-top: 20px;
+      width: 100%;
+    }
+    #logout-btn:hover {
+      background: #d32f2f;
+    }
+    #emoji-btn {
+      background: #ffca28;
+      color: black;
+      padding: 10px;
+      font-size: 1.2em;
+    }
+    #emoji-btn:hover {
+      background: #ffb300;
+    }
+    .emoji-picker {
+      position: absolute;
+      bottom: 60px;
+      left: 15px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      display: none;
+      z-index: 10;
+    }
+    .emoji-picker span {
+      font-size: 1.5em;
+      margin: 5px;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .emoji-picker span:hover {
+      transform: scale(1.2);
+    }
+    .system-message {
+      color: #666;
+      font-style: italic;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .assistant-message {
+      background: #fff8e1;
+    }
+    .private-message {
+      background: #e1f5fe;
+      border-left: 3px solid #2196F3;
+    }
+    .pinned-message {
+      background: #fff3e0;
+      border: 2px solid #FF9800;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .typing-indicator {
+      color: #666;
+      font-style: italic;
+      margin: 5px 0;
+      padding: 5px;
+      font-size: 0.9em;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+    .user-item {
+      padding: 5px;
+      margin: 3px 0;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .timestamp {
+      font-size: 0.8em;
+      color: #666;
+      margin-left: 5px;
+    }
+    .error-message {
+      color: red;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    .users-list-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .history-status-message {
+      color: #666;
+      font-style: italic;
+      padding: 8px;
+      text-align: center;
+    }
+    .search-container {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    .connection-status {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .connection-status.connected {
+      background: #4CAF50;
+      color: white;
+    }
+    .connection-status.disconnected {
+      background: #f44336;
+      color: white;
+      animation: pulse 1s infinite;
+    }
+    a {
+      color: #2196F3;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .message-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 5px;
+      margin-top: 5px;
+      display: none;
+    }
+    .delete-btn, .edit-btn, .pin-btn {
+      padding: 2px 6px;
+      font-size: 0.8em;
+      color: white;
+    }
+    .delete-btn {
+      background: #f44336;
+    }
+    .edit-btn {
+      background: #2196F3;
+    }
+    .pin-btn {
+      background: #FF9800;
+    }
+    .message:hover .message-actions {
+      display: flex;
+    }
+    #media-btn {
+      background: #9c27b0;
+      color: white;
+      padding: 10px;
+    }
+    #media-input {
+      display: none;
+    }
+    .media-message {
+      max-width: 300px;
+      margin-top: 5px;
+    }
+    .media-message img {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    .media-message a {
+      display: inline-block;
+      margin-top: 5px;
+      padding: 5px 10px;
+      background: #2196F3;
+      color: white;
+      border-radius: 4px;
+    }
+    .read-receipt {
+      font-size: 0.7em;
+      color: #666;
+      display: block;
+      margin-top: 5px;
+    }
+    .loading {
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4CAF50;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-container" id="auth-container">
+    <h2>Login || Signup To Enter Chat </h2>
+    <div class="error-message" id="error-message"></div>
+    <div>
+      <input type="text" id="username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+    </div>
+    <div>
+      <input type="password" id="password" placeholder="Password" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+    </div>
+    <button id="login-btn" style="width: 100%;">Login</button>
+    <button id="register-btn" style="width: 100%; margin-top: 10px;">Register</button>
+  </div>
+
+  <div id="main-interface">
+    <div class="users-sidebar">
+      <h3>Online Users (<span id="user-count">0</span>)</h3>
+      <div class="users-list-container">
+        <div id="users"></div>
+      </div>
+      <button id="logout-btn">Logout</button>
+    </div>
+
+    <div class="chat-container">
+      <div class="search-container">
+        <input type="text" id="chat-search" placeholder="Search messages..." style="width: 100%; padding: 8px;">
+      </div>
+      <div id="messages" role="log" aria-live="polite"></div>
+      <div id="message-form">
+        <button id="emoji-btn" title="Add Emoji">😊</button>
+        <div id="emoji-picker" class="emoji-picker">
+          <span data-emoji="😊">😊</span>
+          <span data-emoji="😂">😂</span>
+          <span data-emoji="❤️">❤️</span>
+          <span data-emoji="👍">👍</span>
+          <span data-emoji="😢">😢</span>
+          <span data-emoji="🎉">🎉</span>
+          <span data-emoji="🔥">🔥</span>
+          <span data-emoji="🤓">🤓</span>
+        </div>
+        <select id="recipient-select" style="padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+          <option value="">Everyone</option>
+        </select>
+        <input type="text" id="message-input" placeholder="Type your message or @Assistant command..." autocomplete="off">
+        <button id="send-btn">Send</button>
+        <button id="mic-btn" aria-label="Record Voice Message">🎤</button>
+        <button id="assistant-btn" aria-label="Interact with Virtual Assistant">🤖</button>
+        <button id="media-btn" title="Share Media">📎</button>
+        <input type="file" id="media-input" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
+      </div>
+    </div>
+
+    <div class="history-sidebar">
+      <h3>Chat History</h3>
+      <div class="search-container">
+        <input type="text" id="message-search" placeholder="Search chat history..." style="width: 100%; padding: 8px;">
+      </div>
+      <div id="history-messages"></div>
+    </div>
+  </div>
+
+  <script>
+    const DOM = {
+      messages: document.getElementById('messages'),
+      messageInput: document.getElementById('message-input'),
+      historyMessages: document.getElementById('history-messages'),
+      authContainer: document.getElementById('auth-container'),
+      mainInterface: document.getElementById('main-interface'),
+      errorMessage: document.getElementById('error-message'),
+      usernameInput: document.getElementById('username'),
+      passwordInput: document.getElementById('password'),
+      users: document.getElementById('users'),
+      userCount: document.getElementById('user-count'),
+      recipientSelect: document.getElementById('recipient-select'),
+      chatSearch: document.getElementById('chat-search'),
+      messageSearch: document.getElementById('message-search'),
+      emojiBtn: document.getElementById('emoji-btn'),
+      emojiPicker: document.getElementById('emoji-picker')
+    };
+
+    const CONFIG = {
+      MAX_FILE_SIZE: 1024 * 1024 * 1024,
+      SOCKET_URL: 'http://localhost:5000',
+      RECONNECTION_ATTEMPTS: 5,
+      RECONNECTION_DELAY: 1000,
+      ALLOWED_FILE_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm', 'application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    };
+
+    let socket;
+    let currentUsername = '';
+    let isConnected = false;
+    let recognition;
+    let isListening = false;
+    let finalTranscript = '';
+    let assistantActive = false;
+    let isTabFocused = true;
+    let typingTimeout;
+    let lastMessageId = null;
+
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    function showError(message) {
+      DOM.errorMessage.textContent = message;
+      setTimeout(() => DOM.errorMessage.textContent = '', 5000);
+    }
+
+    function respondAsAssistant(message) {
+      displayMessage({
+        username: 'Assistant',
+        message: message,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    function initializeSocket() {
+      socket = io(CONFIG.SOCKET_URL, {
+        withCredentials: true,
+        transports: ["websocket"],
+        reconnection: true,
+        reconnectionAttempts: CONFIG.RECONNECTION_ATTEMPTS,
+        reconnectionDelay: CONFIG.RECONNECTION_DELAY
+      });
+
+      DOM.messages.innerHTML = '';
+
+      socket.on('connect', () => {
+        console.log('Connected to server');
+        isConnected = true;
+        updateConnectionStatus();
+        if (currentUsername) {
+          socket.emit('register_user', { username: currentUsername });
+        }
+        loadChatHistory();
+        localStorage.removeItem('chat_messages');
+      });
+
+      socket.on('new_message', (data) => {
+        if (data.recipient && data.recipient !== currentUsername && data.username !== currentUsername) return;
+        displayMessage(data);
+        saveMessageToLocal(data);
+        lastMessageId = data.message_id;
+        if (!isTabFocused && Notification.permission === "granted" && data.username !== currentUsername) {
+          new Notification(`New message from ${data.username}`, {
+            body: data.recipient ? `(Private) ${data.message.substring(0, 50)}...` : data.message.substring(0, 50) + '...'
+          });
+        }
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        observer.observe(messageElement);
+      });
+
+      socket.on('media_message', (data) => {
+        if (data.recipient && data.recipient !== currentUsername && data.username !== currentUsername) return;
+        displayMediaMessage(data);
+        saveMessageToLocal(data);
+        lastMessageId = data.message_id;
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        observer.observe(messageElement);
+      });
+
+      socket.on('message_deleted', (data) => {
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        if (messageElement) {
+          observer.unobserve(messageElement);
+          messageElement.remove();
+        }
+        removeMessageFromLocal(data.message_id);
+        loadChatHistory();
+      });
+
+      socket.on('message_edited', (data) => {
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        if (messageElement) {
+          const contentDiv = messageElement.querySelector('.message-content');
+          contentDiv.textContent = formatMessage(data.message);
+        }
+        loadChatHistory();
+      });
+
+      socket.on('message_pinned', (data) => {
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        if (messageElement) {
+          messageElement.classList.toggle('pinned-message', data.pinned);
+          const pinBtn = messageElement.querySelector('.pin-btn');
+          if (pinBtn) pinBtn.textContent = data.pinned ? 'Unpin' : 'Pin';
+        }
+        loadChatHistory();
+      });
+
+      socket.on('message_read', (data) => {
+        const messageElement = document.querySelector(`#messages [data-message-id="${data.message_id}"]`);
+        if (messageElement) {
+          const receipt = messageElement.querySelector('.read-receipt');
+          receipt.textContent = `Read by ${data.read_count} user${data.read_count !== 1 ? 's' : ''}`;
+        }
+      });
+
+      socket.on('user_joined', (data) => {
+        updateUserList(data.users);
+      });
+
+      socket.on('user_left', (data) => {
+        updateUserList(data.users);
+      });
+
+      socket.on('initial_data', (data) => {
+        updateUserList(data.users);
+        DOM.messages.innerHTML = '';
+        data.messages.forEach(msg => {
+          if (msg.media_url) {
+            displayMediaMessage(msg);
+          } else {
+            displayMessage(msg);
+          }
+          saveMessageToLocal(msg);
+          lastMessageId = msg.message_id;
+          const messageElement = document.querySelector(`#messages [data-message-id="${msg.message_id}"]`);
+          observer.observe(messageElement);
+        });
+      });
+
+      socket.on('typing', (data) => {
+        const typingIndicator = document.getElementById('typing-indicator') || document.createElement('div');
+        typingIndicator.id = 'typing-indicator';
+        typingIndicator.className = 'typing-indicator';
+        typingIndicator.textContent = `${data.username} is typing...`;
+        DOM.messages.appendChild(typingIndicator);
+        DOM.messages.scrollTop = DOM.messages.scrollHeight;
+      });
+
+      socket.on('stop_typing', () => {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
+      });
+
+      socket.on('error', (error) => {
+        console.error('Socket error:', error);
+        showError(error.message);
+      });
+
+      socket.on('disconnect', () => {
+        isConnected = false;
+        updateConnectionStatus();
+        showError('Disconnected from server. Trying to reconnect...');
+      });
+
+      socket.on('reconnect', () => {
+        showError('Reconnected to server!');
+      });
+
+      socket.on('connect_error', (err) => {
+        console.error('Connection error:', err);
+      });
+    }
+
+    function loadChatHistory() {
+      DOM.historyMessages.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+      fetch(`/get_messages?username=${encodeURIComponent(currentUsername)}`, {
+        credentials: 'include'
+      })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(messages => {
+          DOM.historyMessages.innerHTML = '';
+          if (!messages || messages.length === 0) {
+            DOM.historyMessages.innerHTML = '<div class="history-status-message">No chat history yet</div>';
+            return;
+          }
+
+          const groupedMessages = {};
+          messages.forEach(msg => {
+            if (!msg.timestamp) {
+              console.warn("Message missing timestamp:", msg);
+              msg.timestamp = new Date().toISOString();
+            }
+            if (msg.recipient && msg.recipient !== currentUsername && msg.username !== currentUsername) return;
+            const date = new Date(msg.timestamp).toLocaleDateString();
+            if (!groupedMessages[date]) {
+              groupedMessages[date] = [];
+            }
+            groupedMessages[date].push(msg);
+          });
+
+          const sortedDates = Object.keys(groupedMessages).sort((a, b) => new Date(b) - new Date(a));
+          sortedDates.forEach(date => {
+            const dateHeader = document.createElement('div');
+            dateHeader.className = 'history-date';
+            dateHeader.textContent = date;
+            DOM.historyMessages.appendChild(dateHeader);
+
+            groupedMessages[date].forEach(msg => {
+              const msgElement = document.createElement('div');
+              msgElement.className = 'history-message';
+              msgElement.setAttribute('data-message-id', msg.message_id || '');
+
+              const messagePreview = msg.message && msg.message.length > 50
+                ? msg.message.substring(0, 50) + '...'
+                : msg.message || (msg.media_url ? '[Media]' : '');
+              const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+              msgElement.innerHTML = `
+                <strong>${msg.username}:</strong>
+                <div>${messagePreview}</div>
+                <div class="timestamp">${time}</div>
+              `;
+              DOM.historyMessages.appendChild(msgElement);
+            });
+          });
+
+          const searchTerm = DOM.messageSearch.value.toLowerCase();
+          if (searchTerm) {
+            filterChatHistory(searchTerm);
+          }
+        })
+        .catch(error => {
+          console.error('Error loading chat history:', error);
+          DOM.historyMessages.innerHTML = '<div class="history-status-message">Error loading history: ' + error.message + '</div>';
+        });
+    }
+
+    function filterChatHistory(term) {
+      const messages = document.querySelectorAll('#history-messages .history-message');
+      messages.forEach(msg => {
+        const text = msg.textContent.toLowerCase();
+        msg.style.display = text.includes(term) ? 'block' : 'none';
+      });
+
+      const dateHeaders = document.querySelectorAll('#history-messages .history-date');
+      dateHeaders.forEach(header => {
+        const nextMessages = [];
+        let sibling = header.nextElementSibling;
+        while (sibling && sibling.classList.contains('history-message')) {
+          nextMessages.push(sibling);
+          sibling = sibling.nextElementSibling;
+        }
+        const hasVisibleMessage = nextMessages.some(msg => msg.style.display !== 'none');
+        header.style.display = hasVisibleMessage ? 'block' : 'none';
+      });
+    }
+
+    function searchChatHistory(term) {
+      return new Promise((resolve) => {
+        fetch(`/get_messages?username=${encodeURIComponent(currentUsername)}`, {
+          credentials: 'include'
+        })
+          .then(response => response.json())
+          .then(messages => {
+            const filteredMessages = messages.filter(msg =>
+              (msg.recipient === null || msg.recipient === currentUsername || msg.username === currentUsername) &&
+              msg.message.toLowerCase().includes(term.toLowerCase())
+            );
+            resolve(filteredMessages);
+          })
+          .catch(() => resolve([]));
+      });
+    }
+
+    function formatMessage(text) {
+      text = DOMPurify.sanitize(text);
+      text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                 .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                 .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+      return text;
+    }
+
+    function displayMessage(data) {
+      const fragment = document.createDocumentFragment();
+      const messageElement = document.createElement('div');
+      messageElement.className = (data.username === 'Assistant') ? 'message assistant-message' :
+                               (data.recipient ? 'message private-message' :
+                               (data.pinned ? 'message pinned-message' : 'message'));
+      messageElement.setAttribute('data-message-id', data.message_id || '');
+
+      const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+      const timeString = timestamp.toLocaleTimeString();
+      const recipientText = data.recipient ? `(To ${data.recipient})` : '';
+      const readCount = data.read_by ? JSON.parse(data.read_by).length : 0;
+
+      messageElement.innerHTML = `
+        <div class="message-header">
+          <strong>${data.username || 'Unknown'}:</strong>
+          <span class="timestamp">[${timeString}]</span>
+          <span>${recipientText}</span>
+          <div class="message-reactions">
+            <span class="reaction" data-emoji="👍" title="Like">👍 0</span>
+            <span class="reaction" data-emoji="❤️" title="Love">❤️ 0</span>
+            <span class="reaction" data-emoji="😂" title="Haha">😂 0</span>
+          </div>
+        </div>
+        <div class="message-content">${formatMessage(data.message)}</div>
+        <span class="read-receipt">Read by ${readCount} user${readCount !== 1 ? 's' : ''}</span>
+        ${data.username === currentUsername ? `
+          <div class="message-actions">
+            <button class="pin-btn">${data.pinned ? 'Unpin' : 'Pin'}</button>
+            <button class="edit-btn">Edit</button>
+            <button class="delete-btn">Delete</button>
+          </div>
+        ` : ''}
+      `;
+      fragment.appendChild(messageElement);
+      DOM.messages.appendChild(fragment);
+      DOM.messages.scrollTop = DOM.messages.scrollHeight;
+    }
+
+    function displayMediaMessage(data) {
+      const fragment = document.createDocumentFragment();
+      const messageElement = document.createElement('div');
+      messageElement.className = data.recipient ? 'message private-message' :
+                               (data.pinned ? 'message pinned-message' : 'message');
+      messageElement.setAttribute('data-message-id', data.message_id || '');
+
+      const timestamp = data.timestamp ? new Date(data.timestamp) : new Date();
+      const timeString = timestamp.toLocaleTimeString();
+      const recipientText = data.recipient ? `(To ${data.recipient})` : '';
+      const readCount = data.read_by ? JSON.parse(data.read_by).length : 0;
+
+      const fileExtension = data.media_url.split('.').pop().toLowerCase();
+      let mediaContent = '';
+      if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension)) {
+        mediaContent = `<img src="${data.media_url}" alt="Shared image">`;
+      } else if (['mp4', 'webm'].includes(fileExtension)) {
+        mediaContent = `<video controls src="${data.media_url}" class="media-message"></video>`;
+      } else {
+        mediaContent = `<a href="${data.media_url}" target="_blank" download>Download ${data.media_filename || 'file'}</a>`;
+      }
+
+      messageElement.innerHTML = `
+        <div class="message-header">
+          <strong>${data.username || 'Unknown'}:</strong>
+          <span class="timestamp">[${timeString}]</span>
+          <span>${recipientText}</span>
+          <div class="message-reactions">
+            <span class="reaction" data-emoji="👍" title="Like">👍 0</span>
+            <span class="reaction" data-emoji="❤️" title="Love">❤️ 0</span>
+            <span class="reaction" data-emoji="😂" title="Haha">😂 0</span>
+          </div>
+        </div>
+        <div class="message-content">
+          ${data.message ? formatMessage(data.message) : ''}
+          <div class="media-message">${mediaContent}</div>
+        </div>
+        <span class="read-receipt">Read by ${readCount} user${readCount !== 1 ? 's' : ''}</span>
+        ${data.username === currentUsername ? `
+          <div class="message-actions">
+            <button class="pin-btn">${data.pinned ? 'Unpin' : 'Pin'}</button>
+            <button class="edit-btn">Edit</button>
+            <button class="delete-btn">Delete</button>
+          </div>
+        ` : ''}
+      `;
+      fragment.appendChild(messageElement);
+      DOM.messages.appendChild(fragment);
+      DOM.messages.scrollTop = DOM.messages.scrollHeight;
+    }
+
+    function updateUserList(users) {
+      DOM.users.innerHTML = '';
+      DOM.recipientSelect.innerHTML = '<option value="">Everyone</option>';
+      DOM.userCount.textContent = users.length;
+
+      users.forEach(user => {
+        const userElement = document.createElement('div');
+        userElement.className = 'user-item';
+        userElement.textContent = user;
+        if (user === currentUsername) {
+          userElement.style.fontWeight = 'bold';
+          userElement.style.color = '#4CAF50';
+        }
+        DOM.users.appendChild(userElement);
+        if (user !== currentUsername) {
+          const option = document.createElement('option');
+          option.value = user;
+          option.textContent = user;
+          DOM.recipientSelect.appendChild(option);
+        }
+      });
+    }
+
+    function saveMessageToLocal(message) {
+      try {
+        const messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
+        messages.push(message);
+        localStorage.setItem('chat_messages', JSON.stringify(messages.slice(-100)));
+      } catch (e) {
+        console.error('Error saving message to localStorage:', e);
+      }
+    }
+
+    function removeMessageFromLocal(messageId) {
+      try {
+        const messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
+        const updatedMessages = messages.filter(msg => msg.message_id != messageId);
+        localStorage.setItem('chat_messages', JSON.stringify(updatedMessages));
+      } catch (e) {
+        console.error('Error removing message from localStorage:', e);
+      }
+    }
+
+    function updateConnectionStatus() {
+      const statusEl = document.getElementById('connection-status') || document.createElement('div');
+      statusEl.id = 'connection-status';
+      statusEl.className = `connection-status ${isConnected ? 'connected' : 'disconnected'}`;
+      statusEl.textContent = isConnected ? 'Connected' : 'Disconnected';
+      document.body.appendChild(statusEl);
+    }
+
+    function sendMessage(message, recipient) {
+      if (!isConnected || !message) return;
+      if (socket && socket.connected) {
+        socket.emit('send_message', { message, recipient });
+        DOM.messageInput.value = '';
+        DOM.messageInput.focus();
+      }
+    }
+
+    function deleteMessage(messageId) {
+      if (socket && socket.connected) {
+        socket.emit('delete_message', { message_id: messageId });
+      }
+    }
+
+    function editMessage(messageId, messageElement) {
+      const contentDiv = messageElement.querySelector('.message-content');
+      const currentText = contentDiv.textContent;
+      contentDiv.innerHTML = `<input type="text" class="edit-input" value="${currentText}">`;
+      const input = contentDiv.querySelector('.edit-input');
+      input.focus();
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          const newMessage = input.value.trim();
+          if (newMessage && socket && socket.connected) {
+            socket.emit('edit_message', { message_id: messageId, message: newMessage });
+            contentDiv.textContent = formatMessage(newMessage);
+          }
+        }
+      });
+    }
+
+    function pinMessage(messageId, pinned) {
+      if (socket && socket.connected) {
+        socket.emit('pin_message', { message_id: messageId, pinned });
+      }
+    }
+
+    function markMessageAsRead(messageId) {
+      if (socket && socket.connected) {
+        socket.emit('message_read', { message_id: messageId });
+      }
+    }
+
+    function handleMediaUpload(file) {
+      if (!file) return;
+      if (file.size > CONFIG.MAX_FILE_SIZE) {
+        showError('File size exceeds 1GB limit');
+        return;
+      }
+      if (!CONFIG.ALLOWED_FILE_TYPES.includes(file.type)) {
+        showError('Unsupported file type');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('username', currentUsername);
+      fetch('/upload_media', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            socket.emit('send_media', {
+              message: DOM.messageInput.value.trim(),
+              media_url: data.media_url,
+              media_filename: file.name,
+              recipient: DOM.recipientSelect.value
+            });
+            DOM.messageInput.value = '';
+          } else {
+            showError(data.message || 'Failed to upload media');
+          }
+        })
+        .catch(error => {
+          console.error('Media upload error:', error);
+          showError('Failed to upload media');
+        });
+    }
+
+    function initSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        console.warn('Speech recognition not supported');
+        document.getElementById('mic-btn').style.display = 'none';
+        document.getElementById('assistant-btn').style.display = 'none';
+        return;
+      }
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isListening = true;
+        if (assistantActive) {
+          document.getElementById('assistant-btn').classList.add('listening');
+        } else {
+          document.getElementById('mic-btn').classList.add('listening');
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        stopListening();
+      };
+
+      recognition.onend = () => {
+        if (isListening) {
+          recognition.start();
+        }
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        if (interimTranscript) {
+          DOM.messageInput.value = finalTranscript + interimTranscript;
+        }
+        if (finalTranscript) {
+          DOM.messageInput.value = finalTranscript;
+          if (assistantActive) {
+            handleAssistantCommand(finalTranscript);
+          } else {
+            sendMessage(finalTranscript, DOM.recipientSelect.value);
+          }
+          finalTranscript = '';
+        }
+      };
+    }
+
+    function handleAssistantCommand(command) {
+      command = command.toLowerCase().trim();
+      let response = "I didn't understand that command. Try saying 'help' for available commands.";
+
+      if (command.includes('open google')) {
+        window.open('https://google.com', '_blank');
+        response = "Opening Google...";
+      } else if (command.includes('open youtube')) {
+        window.open('https://youtube.com', '_blank');
+        response = "Opening YouTube...";
+      } else if (command.includes('hello') || command.includes('hi')) {
+        response = `Hello ${currentUsername}! How can I help you?`;
+      } else if (command.includes('thank')) {
+        response = "You're welcome!";
+      } else if (command.includes('time') || command.includes('what time')) {
+        response = `The current time is ${new Date().toLocaleTimeString()}`;
+      } else if (command.includes('date') || command.includes('what date') || command.includes('today')) {
+        response = `Today is ${new Date().toLocaleDateString()}`;
+      } else if (command.includes('clear chat')) {
+        DOM.messages.innerHTML = '';
+        response = "Chat cleared!";
+      } else if (command.includes('who is online') || command.includes('online users')) {
+        const users = Array.from(document.querySelectorAll('.user-item')).map(el => el.textContent.replace(currentUsername, 'You'));
+        response = `Online users: ${users.join(', ')}`;
+      } else if (command.includes('my name') || command.includes('what is my name')) {
+        response = `Your username is ${currentUsername}`;
+      } else if (command.includes('help')) {
+        response = "Available commands: open google/youtube, clear chat, who is online, what's my name, time, date, send message to [user] saying [message], pin/unpin last message, search history for [term], help";
+      } else if (command.includes('send message')) {
+        const match = command.match(/send message to (\w+) saying (.+)/i);
+        if (match) {
+          const recipient = match[1];
+          const message = match[2];
+          if (recipient.toLowerCase() === 'everyone') {
+            sendMessage(message, '');
+            response = "Message sent to everyone!";
+          } else if (Array.from(DOM.recipientSelect.options).some(opt => opt.value === recipient)) {
+            sendMessage(message, recipient);
+            response = `Message sent to ${recipient}!`;
+          } else {
+            response = `User ${recipient} not found.`;
+          }
+        } else {
+          response = "Please say 'send message to [user] saying [message]'.";
+        }
+      } else if (command.includes('pin last message')) {
+        if (lastMessageId && socket && socket.connected) {
+          pinMessage(lastMessageId, true);
+          response = "Last message pinned!";
+        } else {
+          response = "No message to pin.";
+        }
+      } else if (command.includes('unpin last message')) {
+        if (lastMessageId && socket && socket.connected) {
+          pinMessage(lastMessageId, false);
+          response = "Last message unpinned!";
+        } else {
+          response = "No message to unpin.";
+        }
+      } else if (command.includes('search history for')) {
+        const match = command.match(/search history for (.+)/i);
+        if (match) {
+          const term = match[1];
+          searchChatHistory(term).then(messages => {
+            if (messages.length === 0) {
+              respondAsAssistant(`No messages found containing "${term}".`);
+            } else {
+              let result = `Found ${messages.length} message${messages.length > 1 ? 's' : ''} containing "${term}":\n`;
+              messages.slice(0, 3).forEach(msg => {
+                const preview = msg.message.length > 30 ? msg.message.substring(0, 30) + '...' : msg.message;
+                result += `- ${msg.username}: ${preview} (${new Date(msg.timestamp).toLocaleDateString()})\n`;
+              });
+              if (messages.length > 3) {
+                result += `...and ${messages.length - 3} more.`;
+              }
+              respondAsAssistant(result);
+            }
+          });
+          return;
+        } else {
+          response = "Please say 'search history for [term]'.";
+        }
+      }
+
+      respondAsAssistant(response);
+      stopListening();
+    }
+
+    function handleTextAssistantCommand(command) {
+      const cmd = command.replace('@assistant', '').trim();
+      handleAssistantCommand(cmd);
+    }
+
+    function startListening() {
+      if (!recognition) return;
+      assistantActive = false;
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Speech recognition start failed:", e);
+      }
+    }
+
+    function startAssistant() {
+      if (!recognition) return;
+      assistantActive = true;
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Speech recognition start failed:", e);
+      }
+    }
+
+    function stopListening() {
+      if (!recognition) return;
+      isListening = false;
+      assistantActive = false;
+      recognition.stop();
+      document.getElementById('mic-btn').classList.remove('listening');
+      document.getElementById('assistant-btn').classList.remove('listening');
+    }
+
+    function toggleEmojiPicker() {
+      const isVisible = DOM.emojiPicker.style.display === 'block';
+      DOM.emojiPicker.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible) {
+        DOM.messageInput.focus();
+      }
+    }
+
+    function handleEmojiSelect(emoji) {
+      DOM.messageInput.value += emoji;
+      DOM.emojiPicker.style.display = 'none';
+      DOM.messageInput.focus();
+    }
+
+    function closeEmojiPicker(event) {
+      if (!DOM.emojiBtn.contains(event.target) && !DOM.emojiPicker.contains(event.target)) {
+        DOM.emojiPicker.style.display = 'none';
+      }
+    }
+
+    function requestNotificationPermission() {
+      if ("Notification" in window) {
+        Notification.requestPermission().then(permission => {
+          if (permission === "granted") {
+            console.log("Notification permission granted");
+          }
+        });
+      }
+    }
+
+    function handleLogout() {
+      fetch('/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+        .then(() => {
+          if (socket) {
+            socket.disconnect();
+          }
+          DOM.mainInterface.style.display = 'none';
+          DOM.authContainer.style.display = 'block';
+          DOM.usernameInput.value = '';
+          DOM.passwordInput.value = '';
+          DOM.usernameInput.focus();
+          currentUsername = '';
+        })
+        .catch(error => {
+          console.error('Logout error:', error);
+          showError('Failed to logout');
+        });
+    }
+
+    async function handleLogin() {
+      const username = DOM.usernameInput.value.trim();
+      const password = DOM.passwordInput.value.trim();
+      if (!username || !password) {
+        showError('Please enter both username and password');
+        return;
+      }
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.success) {
+          currentUsername = data.username || username;
+          DOM.authContainer.style.display = 'none';
+          DOM.mainInterface.style.display = 'flex';
+          initializeSocket();
+          initSpeechRecognition();
+          requestNotificationPermission();
+          DOM.messageInput.focus();
+        } else {
+          showError(data.message || 'Login failed');
+        }
+      } catch (error) {
+        showError('Connection error. Please try again.');
+        console.error('Login error:', error);
+      }
+    }
+
+    async function handleRegister() {
+      const username = DOM.usernameInput.value.trim();
+      const password = DOM.passwordInput.value.trim();
+      if (!username || !password) {
+        showError('Please enter both username and password');
+        return;
+      }
+      try {
+        const response = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+          credentials: 'include'
+        });
+        const data = await response.json();
+        if (data.success) {
+          showError('Registration successful! Please login.');
+          DOM.usernameInput.value = '';
+          DOM.passwordInput.value = '';
+        } else {
+          showError(data.message || 'Registration failed');
+        }
+      } catch (error) {
+        showError('Connection error. Please try again.');
+        console.error('Registration error:', error);
+      }
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const messageId = entry.target.getAttribute('data-message-id');
+          markMessageAsRead(messageId);
+        }
+      });
+    }, { root: DOM.messages, threshold: 0.8 });
+
+    document.getElementById('login-btn').addEventListener('click', handleLogin);
+    document.getElementById('register-btn').addEventListener('click', handleRegister);
+    document.getElementById('send-btn').addEventListener('click', () => {
+      const message = DOM.messageInput.value.trim();
+      if (message.toLowerCase().startsWith('@assistant')) {
+        handleTextAssistantCommand(message);
+      } else {
+        sendMessage(message, DOM.recipientSelect.value);
+      }
+    });
+    document.getElementById('mic-btn').addEventListener('click', () => {
+      if (!isListening) startListening();
+      else stopListening();
+    });
+    document.getElementById('assistant-btn').addEventListener('click', () => {
+      if (!isListening) startAssistant();
+      else stopListening();
+    });
+    document.getElementById('logout-btn').addEventListener('click', handleLogout);
+    document.getElementById('media-btn').addEventListener('click', () => {
+      document.getElementById('media-input').click();
+    });
+    document.getElementById('media-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      handleMediaUpload(file);
+      e.target.value = '';
+    });
+
+    DOM.emojiBtn.addEventListener('click', toggleEmojiPicker);
+    DOM.emojiPicker.addEventListener('click', (e) => {
+      const emojiSpan = e.target.closest('span[data-emoji]');
+      if (emojiSpan) {
+        const emoji = emojiSpan.getAttribute('data-emoji');
+        handleEmojiSelect(emoji);
+      }
+    });
+    document.addEventListener('click', closeEmojiPicker);
+
+    DOM.messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const message = DOM.messageInput.value.trim();
+        if (message.toLowerCase().startsWith('@assistant')) {
+          handleTextAssistantCommand(message);
+        } else {
+          sendMessage(message, DOM.recipientSelect.value);
+        }
+      }
+    });
+
+    DOM.messageInput.addEventListener('input', () => {
+      if (socket && socket.connected) {
+        socket.emit('typing', { username: currentUsername });
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+          socket.emit('stop_typing', { username: currentUsername });
+        }, 1000);
+      }
+    });
+
+    DOM.messageSearch.addEventListener('input', debounce((e) => {
+      const term = e.target.value.toLowerCase();
+      filterChatHistory(term);
+    }, 300));
+
+    DOM.chatSearch.addEventListener('input', debounce((e) => {
+      const term = e.target.value.toLowerCase();
+      const messages = document.querySelectorAll('#messages .message');
+      messages.forEach(msg => {
+        const text = msg.textContent.toLowerCase();
+        msg.style.display = text.includes(term) ? 'block' : 'none';
+      });
+    }, 300));
+
+    DOM.messages.addEventListener('click', (e) => {
+      if (e.target.classList.contains('reaction')) {
+        const emoji = e.target.dataset.emoji;
+        const countEl = e.target;
+        const match = countEl.textContent.match(/\d+/);
+        const currentCount = match ? parseInt(match[0]) : 0;
+        countEl.textContent = `${emoji} ${currentCount + 1}`;
+      } else if (e.target.classList.contains('delete-btn')) {
+        const messageElement = e.target.closest('.message');
+        const messageId = messageElement.getAttribute('data-message-id');
+        if (messageId && confirm('Are you sure you want to delete this message?')) {
+          deleteMessage(messageId);
+        }
+      } else if (e.target.classList.contains('edit-btn')) {
+        const messageElement = e.target.closest('.message');
+        const messageId = messageElement.getAttribute('data-message-id');
+        editMessage(messageId, messageElement);
+      } else if (e.target.classList.contains('pin-btn')) {
+        const messageElement = e.target.closest('.message');
+        const messageId = messageElement.getAttribute('data-message-id');
+        const isPinned = e.target.textContent === 'Unpin';
+        pinMessage(messageId, !isPinned);
+      }
+    });
+
+    window.addEventListener('focus', () => { isTabFocused = true; });
+    window.addEventListener('blur', () => { isTabFocused = false; });
+
+    DOM.usernameInput.focus();
+  </script>
+</body>
+</html>
