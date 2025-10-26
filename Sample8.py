@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_bcrypt import Bcrypt
 from datetime import datetime
-import pymysql
-import logging
+import psycopg2
+from psycopg2.extras import RealDictCursorimport logging
 import os
 import uuid
 import json
@@ -13,9 +13,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_123'
+app.secret_key = os.environ.get('SECRET_KEY', 'your_secret_key_123')
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
 app.config['UPLOAD_FOLDER'] = 'Uploads'
 app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB limit
 
@@ -34,8 +34,43 @@ class ConnectionPool:
     def __init__(self, size=5):
         self.pool = []
         self.size = size
-        for _ in range(size):
-            conn = pymysql.connect(
+        # Get DATABASE_URL from environment
+        database_url = os.environ.get('DATABASE_URL')
+        
+        if database_url:
+            # Production: Use Render's PostgreSQL
+            for _ in range(size):
+                conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+                conn.autocommit = True
+                self.pool.append(conn)
+        else:
+            # Local: Use MySQL (your XAMPP)
+            import pymysql
+            for _ in range(size):
+                conn = pymysql.connect(
+                    host='localhost',
+                    user='root',
+                    password='',
+                    database='realtimechatdb',
+                    cursorclass=pymysql.cursors.DictCursor,
+                    autocommit=True
+                )
+                self.pool.append(conn)
+
+    def get_connection(self):
+        for conn in self.pool:
+            if not conn.closed:
+                return conn
+        
+        # Create new connection if pool is empty
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url:
+            conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+            conn.autocommit = True
+            return conn
+        else:
+            import pymysql
+            return pymysql.connect(
                 host='localhost',
                 user='root',
                 password='',
@@ -43,20 +78,6 @@ class ConnectionPool:
                 cursorclass=pymysql.cursors.DictCursor,
                 autocommit=True
             )
-            self.pool.append(conn)
-
-    def get_connection(self):
-        for conn in self.pool:
-            if conn.open:
-                return conn
-        return pymysql.connect(
-            host='localhost',
-            user='root',
-            password='',
-            database='realtimechatdb',
-            cursorclass=pymysql.cursors.DictCursor,
-            autocommit=True
-        )
 
     def release_connection(self, conn):
         if len(self.pool) < self.size:
@@ -252,7 +273,7 @@ def handle_send_message(data):
                     "INSERT INTO messages (username, message, recipient, read_by) VALUES (%s, %s, %s, %s)",
                     (username, message.strip(), recipient or None, json.dumps([]))
                 )
-                cursor.execute("SELECT id AS message_id FROM messages WHERE id = LAST_INSERT_ID()")
+                cursor.execute("SELECT id AS message_id FROM messages ORDER BY id DESC LIMIT 1")
                 message_id = cursor.fetchone()['message_id']
             message_data = {
                 'message_id': message_id,
@@ -293,7 +314,7 @@ def handle_send_media(data):
                     "INSERT INTO messages (username, message, media_url, media_filename, recipient, read_by) VALUES (%s, %s, %s, %s, %s, %s)",
                     (username, message.strip(), media_url, media_filename, recipient or None, json.dumps([]))
                 )
-                cursor.execute("SELECT id AS message_id FROM messages WHERE id = LAST_INSERT_ID()")
+                cursor.execute("SELECT id AS message_id FROM messages ORDER BY id DESC LIMIT 1")
                 message_id = cursor.fetchone()['message_id']
             message_data = {
                 'message_id': message_id,
@@ -428,6 +449,6 @@ def handle_message_read(data):
         emit('error', {'message': str(e)}, room=request.sid)
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, debug=True)
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    socketio.run(app, host="0.0.0.0", port=port, debug=debug_mode)
